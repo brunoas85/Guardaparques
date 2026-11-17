@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block titulo %}Iniciar sesión · Guardaparques por Seccional{% endblock %}
+{% block clase_body %}solo-form{% endblock %}
+{% block contenido %}
+<main><div class="wrap">
+<form method="post" class="card-form">
+  <h2>Iniciar sesión</h2>
+  <p class="sub">Acceso para el personal de RRHH que actualiza el listado.</p>
+  {% if error %}<p class="note warn">{{ error }}</p>{% endif %}
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" autocomplete="username" required autofocus value="{{ usuario }}"></div>
+  <div class="field"><label for="clave">Contraseña</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
+  <button class="btn primary">Entrar</button>
+  {% if lectura_publica %}<a href="{{ url_for('inicio') }}">Volver al listado sin iniciar sesión</a>{% endif %}
+</form>
+</div></main>
+{% endblock %}

@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+instance/
+*.pyc
+
+# Planillas con datos del personal
+*.xlsx
+*.xls
+*.csv

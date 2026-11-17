@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Instalación · Guardaparques por Seccional{% endblock %}
+{% block clase_body %}solo-form{% endblock %}
+{% block contenido %}
+<main><div class="wrap">
+{% if falta_config %}
+<div class="card-form">
+  <h2>Falta la configuración</h2>
+  <p>Copiá <code>config.example.py</code> como <code>instance/config.py</code> y poné un <b>código de instalación</b> propio. Después reiniciá la aplicación y recargá esta página.</p>
+</div>
+{% else %}
+<form method="post" class="card-form">
+  <h2>Crear el primer administrador</h2>
+  <p class="sub">Este usuario podrá editar el listado y crear las cuentas del resto del personal de RRHH. Esta página se desactiva sola cuando termines.</p>
+  {% if error %}<p class="note warn">{{ error }}</p>{% endif %}
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="field"><label for="codigo">Código de instalación (está en instance/config.py)</label><input id="codigo" name="codigo" required></div>
+  <div class="field"><label for="nombre">Apellido y nombre</label><input id="nombre" name="nombre" required value="{{ v.nombre }}"></div>
+  <div class="field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" required autocomplete="username" value="{{ v.usuario }}"></div>
+  <div class="field"><label for="clave">Contraseña</label><input id="clave" name="clave" type="password" autocomplete="new-password" required minlength="8"></div>
+  <div class="field"><label for="clave2">Repetir contraseña</label><input id="clave2" name="clave2" type="password" autocomplete="new-password" required minlength="8"></div>
+  <button class="btn primary">Crear administrador</button>
+</form>
+{% endif %}
+</div></main>
+{% endblock %}

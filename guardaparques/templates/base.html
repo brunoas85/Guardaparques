@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Guardaparques por Seccional{% endblock %}</title>
+<script>
+  // Aplica el tema elegido antes de dibujar la página, para que no parpadee.
+  try { var t = localStorage.getItem("gp-tema"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="{% block clase_body %}{% endblock %}">
+<header class="band"><div class="wrap">
+  <div>
+    <div class="eyebrow">{{ nombre_parque }} · Cuerpo de Guardaparques</div>
+    <h1>Guardaparques por Seccional</h1>
+  </div>
+  <div class="band-der">
+    {% block cabecera %}{% endblock %}
+    <div class="tema" role="group" aria-label="Tema de colores">
+      <button type="button" data-tema="auto" title="Seguir el tema del sistema">Auto</button>
+      <button type="button" data-tema="light">Claro</button>
+      <button type="button" data-tema="dark">Oscuro</button>
+    </div>
+  </div>
+</div></header>
+{% block contenido %}{% endblock %}
+<script>
+  (function () {
+    var raiz = document.documentElement, botones = document.querySelectorAll(".tema button");
+    function marcar() {
+      var actual = raiz.dataset.theme || "auto";
+      botones.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tema === actual); });
+    }
+    botones.forEach(function (b) {
+      b.addEventListener("click", function () {
+        var t = b.dataset.tema;
+        if (t === "auto") delete raiz.dataset.theme; else raiz.dataset.theme = t;
+        try { if (t === "auto") localStorage.removeItem("gp-tema"); else localStorage.setItem("gp-tema", t); } catch (e) {}
+        marcar();
+      });
+    });
+    marcar();
+  })();
+</script>
+</body>
+</html>

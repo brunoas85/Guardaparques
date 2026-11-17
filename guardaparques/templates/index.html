@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block cabecera %}
+  <div class="stats" aria-live="polite">
+    <div><b id="stA">–</b><span>Guardaparques</span></div>
+    <div><b id="stS">–</b><span>Seccionales</span></div>
+    <div><b id="stV">–</b><span>Sin asignar</span></div>
+  </div>
+{% endblock %}
+{% block contenido %}
+<div class="userbar"><div class="wrap">
+{% if u %}
+  <span>Sesión de <b>{{ u.nombre }}</b></span>
+  {% if u.es_admin %}<button class="linkish" type="button" id="bUsers">Usuarios</button>{% endif %}
+  <button class="linkish" type="button" id="bMiClave">Cambiar mi contraseña</button>
+  <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ app_data.csrf }}"><button class="linkish">Salir</button></form>
+{% else %}
+  <span>Solo lectura.</span> <a href="{{ url_for('login') }}">Iniciar sesión para editar</a>
+{% endif %}
+</div></div>
+
+<main><div class="wrap">
+  <div class="toolbar">
+    <div class="tabs" role="group" aria-label="Vista">
+      <button type="button" data-view="seccional" aria-pressed="true">Por seccional</button>
+      <button type="button" data-view="listado" aria-pressed="false">Listado</button>
+      <button type="button" data-view="historial" aria-pressed="false">Movimientos</button>
+    </div>
+    <input id="q" type="search" placeholder="Buscar guardaparque, legajo o seccional…" aria-label="Buscar">
+    <label class="check"><input id="bajas" type="checkbox"> Mostrar bajas</label>
+  </div>
+  <div class="toolbar">
+    <div class="actions" id="editActions" hidden>
+      <button class="btn primary" type="button" id="bAddA">+ Guardaparque</button>
+      <button class="btn" type="button" id="bAddS">+ Seccional</button>
+      <button class="btn" type="button" id="bImport">Cargar listado</button>
+    </div>
+    <div class="actions">
+      <a class="btn" id="bExport" href="{{ url_for('api_csv') }}" hidden>Exportar CSV</a>
+    </div>
+  </div>
+  <div id="notice" class="note" hidden></div>
+  <section id="out" aria-live="polite"><div class="empty"><h2>Cargando el listado…</h2></div></section>
+</div></main>
+
+<dialog id="dMove"><form method="dialog" id="fMove">
+  <h2>Cambiar seccional</h2>
+  <div class="sub" id="mvWho"></div>
+  <div class="row">
+    <div class="field"><label for="mvSec">Nueva seccional</label><select id="mvSec" required></select></div>
+    <div class="field"><label for="mvDate">Desde</label><input id="mvDate" type="date" required></div>
+  </div>
+  <div class="field"><label for="mvNote">Referencia (opcional)</label><input id="mvNote" placeholder="Ej.: Disposición N.º 123/2026"></div>
+  <div class="err" id="mvErr"></div>
+  <div class="foot"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Guardar cambio</button></div>
+</form></dialog>
+
+<dialog id="dAg"><form method="dialog" id="fAg">
+  <h2 id="agTitle">Nuevo guardaparque</h2>
+  <div class="field"><label for="agName">Apellido y nombre</label><input id="agName" required placeholder="Apellido, Nombre"></div>
+  <div class="row">
+    <div class="field"><label for="agLeg">Legajo (opcional)</label><input id="agLeg"></div>
+    <div class="field" id="agSecBox"><label for="agSec">Seccional</label><select id="agSec"></select></div>
+  </div>
+  <div class="field" id="agDateBox"><label for="agDate">En la seccional desde</label><input id="agDate" type="date"></div>
+  <div class="err" id="agErr"></div>
+  <div class="foot">
+    <button class="btn danger" type="button" id="agBaja" hidden>Dar de baja</button>
+    <button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Guardar</button>
+  </div>
+</form></dialog>
+
+<dialog id="dSec"><form method="dialog" id="fSec">
+  <h2 id="scTitle">Nueva seccional</h2>
+  <div class="row">
+    <div class="field"><label for="scName">Nombre</label><input id="scName" required placeholder="Ej.: Seccional Quillén"></div>
+    <div class="field"><label for="scZona">Zona (opcional)</label><input id="scZona" placeholder="Ej.: Zona Norte"></div>
+  </div>
+  <div class="err" id="scErr"></div>
+  <div class="foot">
+    <button class="btn danger" type="button" id="scDel" hidden>Eliminar seccional</button>
+    <button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Guardar</button>
+  </div>
+</form></dialog>
+
+<dialog id="dHist"><form method="dialog">
+  <h2 id="hiTitle"></h2>
+  <ul class="hist" id="hiList"></ul>
+  <div class="foot">
+    <button class="btn" type="button" id="hiReact" hidden>Reactivar</button>
+    <button class="btn" type="button" id="hiEdit" hidden>Editar datos</button>
+    <button class="btn" type="button" id="hiMove" hidden>Cambiar seccional</button>
+    <button class="btn primary" value="close">Cerrar</button>
+  </div>
+</form></dialog>
+
+<dialog id="dImp"><form method="dialog" id="fImp">
+  <h2>Cargar listado</h2>
+  <div class="sub">Pegá una línea por guardaparque: <b>Apellido y nombre ; Seccional ; Legajo</b>. El legajo es opcional. También podés copiar las columnas directo desde Excel. Las seccionales que no existan se crean solas.</div>
+  <textarea id="impText" placeholder="Pérez, Juan ; Seccional Quillén&#10;Gómez, Ana ; Seccional Tromen ; 12345"></textarea>
+  <div class="field"><label for="impDate">En la seccional desde</label><input id="impDate" type="date" required></div>
+  <div class="err" id="impErr"></div>
+  <div class="foot"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Cargar</button></div>
+</form></dialog>
+
+<dialog id="dConf"><form method="dialog">
+  <h2 id="cfTitle"></h2><div id="cfBody"></div>
+  <div class="foot"><button class="btn" value="cancel">Cancelar</button><button class="btn danger" value="ok">Confirmar</button></div>
+</form></dialog>
+
+<dialog id="dClave"><form method="dialog" id="fClave">
+  <h2>Cambiar mi contraseña</h2>
+  <div class="field"><label for="clActual">Contraseña actual</label><input id="clActual" type="password" autocomplete="current-password" required></div>
+  <div class="field"><label for="clNueva">Nueva contraseña (mínimo 8 caracteres)</label><input id="clNueva" type="password" autocomplete="new-password" required minlength="8"></div>
+  <div class="err" id="clErr"></div>
+  <div class="foot"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok">Guardar</button></div>
+</form></dialog>
+
+<dialog id="dUsers"><form method="dialog" id="fUsers">
+  <h2>Usuarios de RRHH</h2>
+  <div class="tablebox"><table class="compact"><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th></th></tr></thead><tbody id="usList"></tbody></table></div>
+  <h3 class="mini">Nuevo usuario</h3>
+  <div class="row">
+    <div class="field"><label for="usNombre">Apellido y nombre</label><input id="usNombre"></div>
+    <div class="field"><label for="usUser">Usuario</label><input id="usUser" placeholder="ej.: aperez" autocomplete="off"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label for="usClave">Contraseña inicial</label><input id="usClave" type="text" autocomplete="off"></div>
+    <label class="check" style="align-self:end;padding-bottom:8px"><input id="usAdmin" type="checkbox"> Administrador</label>
+  </div>
+  <div class="err" id="usErr"></div>
+  <div class="foot"><button class="btn" type="button" id="usAdd">Crear usuario</button><button class="btn primary" value="close">Cerrar</button></div>
+</form></dialog>
+
+<script>window.APP = {{ app_data | tojson }};</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
