@@ -3,7 +3,7 @@
 "use strict";
 const $ = s => document.querySelector(s);
 const APP = window.APP || {};
-const S = { secc: [], ag: [], dest: [], view: "seccional", q: "", bajas: false, canWrite: !!APP.usuario, loaded: false };
+const S = { secc: [], ag: [], dest: [], view: "seccional", q: "", zona: "", bajas: false, canWrite: !!APP.usuario, loaded: false };
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const fmt = d => d ? d.slice(0, 10).split("-").reverse().join("/") : "—";
@@ -39,6 +39,7 @@ async function cargar() {
       return { ...a, activo: !!a.activo, actual, ultimo: actual || ds[ds.length - 1] || null, destinos: ds };
     });
     S.loaded = true;
+    opcionesZona();
     if (!$("#notice").classList.contains("warn")) notice("");
     render();
   } catch (e) {
@@ -68,10 +69,32 @@ async function guardar(accion, datos, errEl, boton) {
 }
 
 /* ---------- Render ---------- */
+/* ---------- Zonas ---------- */
+const ORDEN_ZONAS = ["ugd norte", "ugd centro", "ugd sur"];
+const zonaDeSecc = id => { const s = id && secById(id); return s ? s.zona || "" : ""; };
+const zonaDe = a => zonaDeSecc(a.activo ? a.actual && a.actual.seccional_id : a.ultimo && a.ultimo.seccional_id);
+// Texto con el que la búsqueda encuentra una zona: "UGD Sur" también como "zona sur".
+const textoZona = z => { const n = norm(z); return n ? n + " " + n.replace(/^ugd\s+/, "zona ") : ""; };
+const enZona = z => !S.zona || norm(z) === norm(S.zona);
+function opcionesZona() {
+  const sel = $("#zona"), zonas = [...new Set(S.secc.map(s => s.zona).filter(Boolean))].sort((x, y) => {
+    const i = ORDEN_ZONAS.indexOf(norm(x)), j = ORDEN_ZONAS.indexOf(norm(y));
+    return (i < 0 ? 99 : i) - (j < 0 ? 99 : j) || x.localeCompare(y, "es");
+  });
+  if (S.zona && !zonas.some(z => norm(z) === norm(S.zona))) S.zona = "";
+  sel.innerHTML = `<option value="">Todas las zonas</option>` +
+    zonas.map(z => `<option value="${esc(z)}"${norm(z) === norm(S.zona) ? " selected" : ""}>${esc(z)}</option>`).join("");
+  sel.hidden = !zonas.length;
+}
+function sinCoincidencias() {
+  const partes = [S.q && `“${esc(S.q)}”`, S.zona && esc(S.zona)].filter(Boolean);
+  return `<div class="empty">Nada coincide con ${partes.join(" en ")}.</div>`;
+}
+
 function visibles() {
   const q = norm(S.q);
-  return S.ag.filter(a => (S.bajas || a.activo) &&
-    (!q || norm(a.nombre).includes(q) || norm(a.legajo).includes(q) || norm(a.ultimo && a.ultimo.seccional).includes(q)));
+  return S.ag.filter(a => (S.bajas || a.activo) && enZona(zonaDe(a)) &&
+    (!q || norm(a.nombre).includes(q) || norm(a.legajo).includes(q) || norm(a.ultimo && a.ultimo.seccional).includes(q) || textoZona(zonaDe(a)).includes(q)));
 }
 function render() {
   const act = S.ag.filter(a => a.activo);
@@ -94,10 +117,10 @@ function vistaSeccional() {
   const ags = visibles(), q = norm(S.q);
   const enSec = (a, id) => a.activo ? a.actual && a.actual.seccional_id === id : a.ultimo && a.ultimo.seccional_id === id;
   const grupos = S.secc.slice().sort(byName).map(s => ({ s, list: ags.filter(a => enSec(a, s.id)).sort(byName) }))
-    .filter(g => !q || g.list.length || norm(g.s.nombre).includes(q));
+    .filter(g => enZona(g.s.zona) && (!q || g.list.length || norm(g.s.nombre).includes(q) || textoZona(g.s.zona).includes(q)));
   const sin = ags.filter(a => !S.secc.some(s => enSec(a, s.id))).sort(byName);
   if (sin.length) grupos.push({ s: { id: 0, nombre: "Sin seccional asignada" }, list: sin });
-  if (!grupos.length) return `<div class="empty">Nada coincide con “${esc(S.q)}”.</div>`;
+  if (!grupos.length) return sinCoincidencias();
   return `<div class="grid">${grupos.map(({ s, list }) => `
     <section class="secc${s.id ? "" : " sin"}"><h3>
       <span class="tit">${s.id && S.canWrite ? `<button class="linkish" type="button" data-act="editS" data-id="${s.id}" title="Editar seccional">${esc(s.nombre)}</button>` : esc(s.nombre)}</span>
@@ -108,7 +131,7 @@ function vistaSeccional() {
 }
 function vistaListado() {
   const ags = visibles().sort(byName);
-  if (!ags.length) return `<div class="empty">${S.q ? `Nada coincide con “${esc(S.q)}”.` : "No hay guardaparques activos."}</div>`;
+  if (!ags.length) return S.q || S.zona ? sinCoincidencias() : `<div class="empty">No hay guardaparques activos.</div>`;
   return `<div class="tablebox"><table><thead><tr><th>Guardaparque</th><th>Legajo</th><th>Seccional</th><th>Desde</th><th></th></tr></thead><tbody>
     ${ags.map(a => `<tr><td><button class="linkish" type="button" data-act="hist" data-id="${a.id}">${esc(a.nombre)}</button>${a.activo ? "" : ` <span class="pill off">Baja</span>`}</td>
       <td class="num">${esc(a.legajo) || "—"}</td>
@@ -120,14 +143,17 @@ function vistaListado() {
 function movimientos() {
   const ev = [];
   for (const a of S.ag) {
-    a.destinos.forEach((d, i) => { if (i > 0) ev.push({ fecha: d.desde, a, de: a.destinos[i - 1].seccional, hacia: d.seccional, ref: d.referencia, por: d.registrado_por }); });
-    if (!a.activo && a.baja_fecha) ev.push({ fecha: a.baja_fecha, a, de: a.ultimo && a.ultimo.seccional, baja: true });
+    a.destinos.forEach((d, i) => { if (i > 0) { const p = a.destinos[i - 1];
+      ev.push({ fecha: d.desde, a, de: p.seccional, hacia: d.seccional, zonas: [zonaDeSecc(p.seccional_id), zonaDeSecc(d.seccional_id)], ref: d.referencia, por: d.registrado_por }); } });
+    if (!a.activo && a.baja_fecha) ev.push({ fecha: a.baja_fecha, a, de: a.ultimo && a.ultimo.seccional, zonas: [zonaDe(a)], baja: true });
   }
   return ev.sort((x, y) => (y.fecha || "").localeCompare(x.fecha || ""));
 }
 function vistaMovimientos() {
   const q = norm(S.q);
-  const ev = movimientos().filter(e => !q || norm(e.a.nombre).includes(q) || norm(e.de).includes(q) || norm(e.hacia).includes(q));
+  const ev = movimientos().filter(e => (!S.zona || e.zonas.some(enZona)) &&
+    (!q || norm(e.a.nombre).includes(q) || norm(e.de).includes(q) || norm(e.hacia).includes(q) || e.zonas.some(z => textoZona(z).includes(q))));
+  if (!ev.length && (S.q || S.zona)) return sinCoincidencias();
   if (!ev.length) return `<div class="empty"><h2>Sin movimientos registrados</h2>Cada vez que se usa “Cambiar seccional”, el traslado queda anotado acá con su fecha.</div>`;
   return `<div class="tablebox"><ul class="timeline">${ev.map(e => `<li><span class="when">${fmt(e.fecha)}</span>
     <span><button class="linkish" type="button" data-act="hist" data-id="${e.a.id}">${esc(e.a.nombre)}</button><br>
@@ -288,6 +314,7 @@ document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click
   render();
 }));
 $("#q").addEventListener("input", e => { S.q = e.target.value; render(); });
+$("#zona").addEventListener("change", e => { S.zona = e.target.value; render(); });
 $("#bajas").addEventListener("change", e => { S.bajas = e.target.checked; render(); });
 $("#bAddA").addEventListener("click", () => abrirAgente());
 $("#bAddS").addEventListener("click", () => abrirSeccional());
