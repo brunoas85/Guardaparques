@@ -9,6 +9,7 @@ const today = () => new Date().toLocaleDateString("sv-SE");
 const fmt = d => d ? d.slice(0, 10).split("-").reverse().join("/") : "—";
 const norm = s => (s || "").toString().normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dniTexto = d => (d || "").replace(/\B(?=(\d{3})+$)/g, ".");
 const byName = (a, b) => a.nombre.localeCompare(b.nombre, "es");
 const secById = id => S.secc.find(s => s.id === id);
 
@@ -91,10 +92,14 @@ function sinCoincidencias() {
   return `<div class="empty">Nada coincide con ${partes.join(" en ")}.</div>`;
 }
 
+function porDni(a, q) {
+  const d = q.replace(/[.\s-]/g, "");
+  return !!a.dni && /^\d{3,}$/.test(d) && a.dni.includes(d);
+}
 function visibles() {
   const q = norm(S.q);
   return S.ag.filter(a => (S.bajas || a.activo) && enZona(zonaDe(a)) &&
-    (!q || norm(a.nombre).includes(q) || norm(a.legajo).includes(q) || norm(a.ultimo && a.ultimo.seccional).includes(q) || textoZona(zonaDe(a)).includes(q)));
+    (!q || norm(a.nombre).includes(q) || norm(a.legajo).includes(q) || porDni(a, q) || norm(a.ultimo && a.ultimo.seccional).includes(q) || textoZona(zonaDe(a)).includes(q)));
 }
 function render() {
   const act = S.ag.filter(a => a.activo);
@@ -188,7 +193,7 @@ $("#fMove").addEventListener("submit", async ev => {
 function abrirAgente(a) {
   cur = a || null; delete $("#fAg").dataset.repOk;
   $("#agTitle").textContent = a ? "Editar guardaparque" : "Nuevo guardaparque";
-  $("#agName").value = a ? a.nombre : ""; $("#agLeg").value = a ? a.legajo : "";
+  $("#agName").value = a ? a.nombre : ""; $("#agLeg").value = a ? a.legajo : ""; $("#agDni").value = a ? a.dni || "" : "";
   opcionesSeccional($("#agSec"), 0, true);
   $("#agSecBox").hidden = !!a; $("#agDateBox").hidden = !!a; $("#agDate").value = today();
   $("#agBaja").hidden = !a;
@@ -198,7 +203,7 @@ function abrirAgente(a) {
 $("#fAg").addEventListener("submit", async ev => {
   if (!ev.submitter || ev.submitter.value !== "ok") return;
   ev.preventDefault();
-  const datos = { nombre: $("#agName").value, legajo: $("#agLeg").value, confirmar_repetido: !!$("#fAg").dataset.repOk };
+  const datos = { nombre: $("#agName").value, legajo: $("#agLeg").value, dni: $("#agDni").value, confirmar_repetido: !!$("#fAg").dataset.repOk };
   if (cur) datos.id = cur.id; else if ($("#agSec").value) { datos.seccional_id = +$("#agSec").value; datos.desde = $("#agDate").value; }
   const j = await guardar(cur ? "agente_editar" : "agente_crear", datos, $("#agErr"), ev.submitter);
   if (!j) return;
@@ -239,7 +244,7 @@ function abrirHistorial(a) {
     <span class="sub">${d.hasta ? `${fmt(d.desde)} al ${fmt(d.hasta)}` : `Actual · desde ${fmt(d.desde)}`}${d.referencia ? " · " + esc(d.referencia) : ""}${d.registrado_por ? " · cargó " + esc(d.registrado_por) : ""}</span></li>`);
   if (!a.activo) items.unshift(`<li><b>Baja</b><span class="sub">${fmt(a.baja_fecha)}</span></li>`);
   if (!a.destinos.length) items.push(`<li><b>Sin seccional asignada</b></li>`);
-  $("#hiList").innerHTML = items.join("") + (a.legajo ? `<li style="list-style:none"><span class="sub">Legajo ${esc(a.legajo)}</span></li>` : "");
+  $("#hiList").innerHTML = items.join("") + (a.legajo || a.dni ? `<li style="list-style:none"><span class="sub">${[a.legajo && "Legajo " + esc(a.legajo), a.dni && "DNI " + esc(dniTexto(a.dni))].filter(Boolean).join("<br>")}</span></li>` : "");
   $("#hiMove").hidden = $("#hiEdit").hidden = !(S.canWrite && a.activo);
   $("#hiReact").hidden = !(S.canWrite && !a.activo);
   $("#hiMove").onclick = () => { $("#dHist").close(); abrirMover(a); };

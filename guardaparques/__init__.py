@@ -143,7 +143,7 @@ def crear_app(config=None):
     def api_datos():
         if not puede_leer():
             return jsonify(error="Iniciá sesión para ver el listado."), 401
-        resp = jsonify(datos.datos_completos())
+        resp = jsonify(datos.datos_completos(con_dni=usuario_actual() is not None))
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
@@ -152,7 +152,7 @@ def crear_app(config=None):
         if not puede_leer():
             return redirect(url_for("login"))
         nombre = f"guardaparques-seccionales-{time.strftime('%Y-%m-%d')}.csv"
-        return Response(datos.csv_listado(), mimetype="text/csv",
+        return Response(datos.csv_listado(con_dni=usuario_actual() is not None), mimetype="text/csv",
                         headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
     @app.post("/api/<accion>")

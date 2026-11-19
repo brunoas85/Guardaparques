@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS agentes (
     id          INTEGER PRIMARY KEY,
     nombre      TEXT NOT NULL,
     legajo      TEXT NOT NULL DEFAULT '',
+    dni         TEXT NOT NULL DEFAULT '',
     activo      INTEGER NOT NULL DEFAULT 1,
     baja_fecha  TEXT,
     creado_en   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -84,6 +85,15 @@ def iniciar(app):
         con = db()
         con.execute("PRAGMA journal_mode = WAL")
         con.executescript(ESQUEMA)
+        migrar(con)
+
+
+def migrar(con):
+    """Agrega a una base existente las columnas que se sumaron después."""
+    columnas = {f[1] for f in con.execute("PRAGMA table_info(agentes)")}
+    if "dni" not in columnas:
+        con.execute("ALTER TABLE agentes ADD COLUMN dni TEXT NOT NULL DEFAULT ''")
+        con.commit()
 
 
 def filas(sql, params=()):
@@ -132,6 +142,23 @@ def dmy(f):
     return datetime.strptime(f[:10], "%Y-%m-%d").strftime("%d/%m/%Y") if f else ""
 
 
+def normalizar_dni(texto):
+    """'11.222.333' -> '11222333'. Vacío si no se cargó. Error si no parece un DNI."""
+    t = limpiar(texto)
+    if not t:
+        return ""
+    d = re.sub(r"[\s.\-]", "", t)
+    if not d.isdigit() or not 6 <= len(d) <= 8:
+        raise ErrorUsuario("El DNI tiene que tener entre 6 y 8 números, sin letras.")
+    return d.lstrip("0") or "0"
+
+
+def dni_de_cuil(cuil):
+    """'27-11222333-9' -> '11222333'. Vacío si el CUIL no tiene 11 dígitos."""
+    d = re.sub(r"\D", "", str(cuil or ""))
+    return d[2:10].lstrip("0") if len(d) == 11 else ""
+
+
 def validar_clave(clave):
     if len(clave or "") < 8:
         raise ErrorUsuario("La contraseña tiene que tener al menos 8 caracteres.")
@@ -177,10 +204,12 @@ def crear_usuario(usuario, nombre, clave, es_admin):
 
 # ---------- Lectura ----------
 
-def datos_completos():
+def datos_completos(con_dni=False):
+    """Todo el listado. El DNI va solo para quien inició sesión: la lectura puede ser pública."""
+    campos = "id, nombre, legajo, dni, activo, baja_fecha" if con_dni else "id, nombre, legajo, activo, baja_fecha"
     return {
         "seccionales": filas("SELECT id, nombre, zona FROM seccionales ORDER BY nombre"),
-        "agentes": filas("SELECT id, nombre, legajo, activo, baja_fecha FROM agentes ORDER BY nombre"),
+        "agentes": filas(f"SELECT {campos} FROM agentes ORDER BY nombre"),
         "destinos": filas(
             """SELECT d.id, d.agente_id, d.seccional_id, COALESCE(s.nombre, d.seccional_nombre) AS seccional,
                       d.desde, d.hasta, d.referencia, d.registrado_en, u.nombre AS registrado_por
@@ -192,8 +221,8 @@ def datos_completos():
     }
 
 
-def csv_listado():
-    d = datos_completos()
+def csv_listado(con_dni=False):
+    d = datos_completos(con_dni)
     zonas = {s["id"]: s["zona"] for s in d["seccionales"]}
     por_agente = {}
     for dest in d["destinos"]:
@@ -202,13 +231,12 @@ def csv_listado():
     salida = io.StringIO()
     salida.write("﻿")  # para que Excel reconozca los acentos
     w = csv.writer(salida, delimiter=";", lineterminator="\r\n")
-    w.writerow(["Guardaparque", "Legajo", "Seccional", "Zona", "Desde", "Estado", "Destinos anteriores"])
+    w.writerow(["Guardaparque", "Legajo"] + (["DNI"] if con_dni else []) + ["Seccional", "Zona", "Desde", "Estado", "Destinos anteriores"])
     for a in d["agentes"]:
         lista = por_agente.get(a["id"], [])
         actual = next((x for x in lista if x["hasta"] is None), None)
         anteriores = [f"{x['seccional']} ({dmy(x['desde'])}–{dmy(x['hasta'])})" for x in lista if x["hasta"] is not None]
-        w.writerow([
-            a["nombre"], a["legajo"],
+        w.writerow([a["nombre"], a["legajo"]] + ([a["dni"]] if con_dni else []) + [
             actual["seccional"] if actual else "",
             zonas.get(actual["seccional_id"], "") if actual else "",
             dmy(actual["desde"]) if actual else "",
@@ -249,6 +277,20 @@ def nombre_repetido(nombre, excepto=0):
     return valor("SELECT COUNT(*) FROM agentes WHERE nombre = ? COLLATE NOCASE AND id <> ?", (nombre, excepto)) > 0
 
 
+def dni_repetido(dni, excepto=0):
+    if not dni:
+        return None
+    return valor("SELECT nombre FROM agentes WHERE dni = ? AND id <> ?", (dni, excepto))
+
+
+def requerir_dni(entrada, excepto=0):
+    dni = normalizar_dni(entrada.get("dni"))
+    otro = dni_repetido(dni, excepto)
+    if otro:
+        raise ErrorUsuario(f"Ese DNI ya lo tiene {otro}. Revisá el número.")
+    return dni
+
+
 def entero(entrada, campo):
     try:
         return int(entrada.get(campo) or 0)
@@ -261,9 +303,10 @@ def entero(entrada, campo):
 def agente_crear(e, u):
     nombre = requerir(e, "nombre")
     legajo = limpiar(e.get("legajo"))
+    dni = requerir_dni(e)
     if nombre_repetido(nombre) and not e.get("confirmar_repetido"):
         return {"repetido": True}
-    aid = db().execute("INSERT INTO agentes (nombre, legajo) VALUES (?, ?)", (nombre, legajo)).lastrowid
+    aid = db().execute("INSERT INTO agentes (nombre, legajo, dni) VALUES (?, ?, ?)", (nombre, legajo, dni)).lastrowid
     if entero(e, "seccional_id"):
         abrir_destino(aid, buscar_seccional(entero(e, "seccional_id")), requerir_fecha(e, "desde"), "", u["id"])
     registrar(u["id"], "alta guardaparque", nombre)
@@ -274,9 +317,10 @@ def agente_editar(e, u):
     a = buscar_agente(entero(e, "id"))
     nombre = requerir(e, "nombre")
     legajo = limpiar(e.get("legajo"))
+    dni = requerir_dni(e, a["id"]) if "dni" in e else a["dni"]
     if nombre_repetido(nombre, a["id"]) and not e.get("confirmar_repetido"):
         return {"repetido": True}
-    db().execute("UPDATE agentes SET nombre = ?, legajo = ? WHERE id = ?", (nombre, legajo, a["id"]))
+    db().execute("UPDATE agentes SET nombre = ?, legajo = ?, dni = ? WHERE id = ?", (nombre, legajo, dni, a["id"]))
     registrar(u["id"], "edición guardaparque", f"{a['nombre']} → {nombre}")
     return {}
 

@@ -26,10 +26,11 @@ App web para que RRHH del Parque Nacional Lanín mantenga el listado de guardapa
 - `guardaparques/static/app.js`: lee todo con `api/datos` y arma las vistas del lado del cliente.
 - `tests/test_app.py`: pruebas de punta a punta con el test client de Flask y una base temporal.
 - `scripts/importar_planilla.py`: importa los guardaparques (CONVENIO = GUARDAPARQUES) de la planilla Excel de personal. Sin `--grabar` solo muestra la vista previa. Nombres como `APELLIDO, Nombre I.`; la columna FUNCIÓN se normaliza como destino ("SECC. X" → "Seccional X") y SECTORES da la zona (UGD Sur/Centro/Norte).
+- `scripts/importar_dni.py`: completa el DNI desde el listado de agentes (columnas CUIL, APELLIDO, NOMBRE, LEGAJO), buscando por legajo y si no por nombre. Sin `--grabar` solo muestra a quién se le encontró, sin imprimir los DNI.
 
 ## Modelo de datos
 
-- `agentes`: nombre, legajo, activo, baja_fecha.
+- `agentes`: nombre, legajo, dni (solo dígitos, sin puntos), activo, baja_fecha. El DNI es dato personal: `api/datos` y el CSV lo incluyen solo con sesión iniciada. Las columnas nuevas se agregan a bases existentes en `datos.migrar()`.
 - `seccionales`: nombre (único, sin distinguir mayúsculas), zona.
 - `destinos`: un período de un agente en una seccional (`desde`/`hasta`). El destino actual es el que tiene `hasta IS NULL`. Cambiar de seccional cierra el actual con la fecha del traslado y abre uno nuevo, así se arma el historial. `seccional_nombre` guarda el nombre al momento de asignarse, para que el historial sobreviva si se borra la seccional.
 - `usuarios`: cuentas de RRHH; `es_admin` gestiona usuarios.
@@ -39,7 +40,7 @@ Fechas en ISO `YYYY-MM-DD` en la base y en la API; en pantalla y en el CSV, `dd/
 
 ## Datos cargados
 
-Los 49 guardaparques vienen de `PERSONAL PNL-DATOS (2).xlsx` (planilla de oct-2026), importada el 17/11/2026 con `desde = 2026-10-01` para todos. Los que no están en una seccional tienen su función como destino (Taller, Operativo, Administrativa, etc.). Las planillas `.xlsx` tienen datos personales y están en .gitignore.
+Los 49 guardaparques vienen de `PERSONAL PNL-DATOS (2).xlsx` (planilla de oct-2026), importada el 17/11/2026 con `desde = 2026-10-01` para todos. Los que no están en una seccional tienen su función como destino (Taller, Operativo, Administrativa, etc.). El 19/11/2026 se completó el DNI de 43 desde `LISTADO DE AGENTES DEL P.N.LANIN (1).xlsx` (sacado del CUIL); 6 no figuran en ese listado y no tienen DNI. Las planillas `.xlsx` tienen datos personales y están en .gitignore.
 
 ## Convenciones
 

@@ -102,7 +102,7 @@ class Flujo(Base):
         self.assertTrue(all(x["hasta"] for x in d["destinos"] if x["agente_id"] == juan["id"]))
 
         csv = self.c.get("/api/csv").get_data(as_text=True)
-        self.assertIn("Pérez, Juan;111;;;;Baja;Seccional Quillén (01/03/2024–17/11/2026) | Seccional Tromen (17/11/2026–01/12/2026)", csv)
+        self.assertIn("Pérez, Juan;111;;;;;Baja;Seccional Quillén (01/03/2024–17/11/2026) | Seccional Tromen (17/11/2026–01/12/2026)", csv)
 
     def test_seccional_renombrada_y_eliminada_conserva_historial(self):
         self.api("seccional_guardar", {"nombre": "Lolog"})
@@ -148,6 +148,37 @@ class Flujo(Base):
         self.c.post("/login", data={"csrf": self.csrf("/login"), "usuario": "xss", "clave": "12345678"})
         html = self.c.get("/").get_data(as_text=True)
         self.assertNotIn("<script>alert(1)", html)
+
+    def test_dni_solo_con_sesion(self):
+        r = self.api("agente_crear", {"nombre": "Pérez, Juan", "dni": "11.222.333"})
+        aid = r.get_json()["id"]
+        juan = self.datos()["agentes"][0]
+        self.assertEqual(juan["dni"], "11222333")
+        self.assertIn("DNI", self.c.get("/api/csv").get_data(as_text=True))
+
+        # Validación y repetidos
+        self.assertEqual(self.api("agente_crear", {"nombre": "Otro", "dni": "12ab"}).status_code, 422)
+        r = self.api("agente_crear", {"nombre": "Otro", "dni": "11222333"})
+        self.assertEqual(r.status_code, 422)
+        self.assertIn("Pérez, Juan", r.get_json()["error"])
+
+        # Editar sin mandar el DNI lo conserva; mandarlo vacío lo borra
+        self.api("agente_editar", {"id": aid, "nombre": "Pérez, Juan", "legajo": "1"})
+        self.assertEqual(self.datos()["agentes"][0]["dni"], "11222333")
+        self.api("agente_editar", {"id": aid, "nombre": "Pérez, Juan", "dni": ""})
+        self.assertEqual(self.datos()["agentes"][0]["dni"], "")
+        self.api("agente_editar", {"id": aid, "nombre": "Pérez, Juan", "dni": "11222333"})
+
+        # Sin sesión (lectura pública) no se ve
+        self.c.post("/logout", data={"csrf": self.token})
+        self.assertNotIn("dni", self.datos()["agentes"][0])
+        self.assertNotIn("11222333", self.c.get("/api/csv").get_data(as_text=True))
+
+    def test_dni_de_cuil(self):
+        from guardaparques import datos
+        self.assertEqual(datos.dni_de_cuil("27-11222333-9"), "11222333")
+        self.assertEqual(datos.dni_de_cuil("20-07123456-3"), "7123456")
+        self.assertEqual(datos.dni_de_cuil("123"), "")
 
 
 class LecturaPrivada(Base):
